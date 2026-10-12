@@ -29,14 +29,14 @@ jobs:
           use-dotnet: false
           include-templates: true
 
-      - name: Unpack Toy Football 0.2
+      - name: Unpack Toy Football 0.3
         shell: bash
         run: |
           set -euo pipefail
-          test -f Toy_Football_Godot_v0_2.zip || { echo "Missing Toy_Football_Godot_v0_2.zip"; exit 1; }
-          unzip -q Toy_Football_Godot_v0_2.zip -d work
-          test -f work/Toy_Football_Godot_v0_2/project.godot
-          cat > work/Toy_Football_Godot_v0_2/export_presets.cfg <<'EOF'
+          test -f Toy_Football_Godot_v0_3.zip || { echo "Missing Toy_Football_Godot_v0_3.zip"; exit 1; }
+          unzip -q Toy_Football_Godot_v0_3.zip -d work
+          test -f work/Toy_Football_Godot_v0_3/project.godot
+          cat > work/Toy_Football_Godot_v0_3/export_presets.cfg <<'EOF'
           [preset.0]
           name="Web"
           platform="Web"
@@ -76,8 +76,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p site
-          godot --headless --editor --import --path work/Toy_Football_Godot_v0_2
-          godot --headless --path work/Toy_Football_Godot_v0_2 --export-release "Web" "$GITHUB_WORKSPACE/site/index.html"
+          godot --headless --editor --import --path work/Toy_Football_Godot_v0_3
+          godot --headless --path work/Toy_Football_Godot_v0_3 --export-release "Web" "$GITHUB_WORKSPACE/site/index.html"
           test -s site/index.html
           touch site/.nojekyll
 
@@ -94,6 +94,7 @@ jobs:
     steps:
       - name: Publish to GitHub Pages
         uses: actions/deploy-pages@v4
+
 
 
 
