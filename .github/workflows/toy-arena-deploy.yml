@@ -1,5 +1,4 @@
-
-name: Toy Football - Godot Web
+name: Toy Football - Automatic Godot Web Deploy
 
 on:
   push:
@@ -12,31 +11,63 @@ permissions:
   id-token: write
 
 concurrency:
-  group: toy-arena-pages
+  group: toy-football-pages
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Get repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Godot 4.3 and Web export templates
+      - name: Install Godot and Web export templates
         uses: chickensoft-games/setup-godot@v2
         with:
           version: 4.3.0
           use-dotnet: false
           include-templates: true
 
-      - name: Unpack Toy Football 0.3
+      - name: Find latest Toy Football archive and unpack
+        id: game
         shell: bash
         run: |
           set -euo pipefail
-          test -f Toy_Football_Godot_v0_3.zip || { echo "Missing Toy_Football_Godot_v0_3.zip"; exit 1; }
-          unzip -q Toy_Football_Godot_v0_3.zip -d work
-          test -f work/Toy_Football_Godot_v0_3/project.godot
-          cat > work/Toy_Football_Godot_v0_3/export_presets.cfg <<'EOF'
+          python3 - <<'PY'
+          import glob, os, re, zipfile
+          archives = glob.glob('Toy_Football_Godot_v*.zip')
+          pattern = re.compile(r'^Toy_Football_Godot_v(\d+(?:_\d+)*)\.zip$')
+          candidates = []
+          for path in archives:
+              match = pattern.fullmatch(os.path.basename(path))
+              if match:
+                  candidates.append((tuple(int(n) for n in match.group(1).split('_')), path))
+          if not candidates:
+              raise SystemExit('No Toy_Football_Godot_v*.zip found in repository root')
+          _, archive = max(candidates)
+          print('Selected archive:', archive)
+          os.makedirs('work', exist_ok=True)
+          with zipfile.ZipFile(archive) as z:
+              for member in z.infolist():
+                  target = os.path.abspath(os.path.join('work', member.filename))
+                  if not target.startswith(os.path.abspath('work') + os.sep):
+                      raise SystemExit('Unsafe archive path: ' + member.filename)
+              z.extractall('work')
+          projects = glob.glob('work/**/project.godot', recursive=True)
+          if len(projects) != 1:
+              raise SystemExit(f'Expected one project.godot in archive, found {projects}')
+          project_dir = os.path.dirname(projects[0])
+          print('Godot project:', project_dir)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f'project_dir={project_dir}\n')
+          PY
+
+      - name: Create Web export preset
+        shell: bash
+        env:
+          PROJECT_DIR: ${{ steps.game.outputs.project_dir }}
+        run: |
+          cat > "$PROJECT_DIR/export_presets.cfg" <<'EOF'
           [preset.0]
           name="Web"
           platform="Web"
@@ -71,17 +102,19 @@ jobs:
           progressive_web_app/ensure_cross_origin_isolation_headers=false
           EOF
 
-      - name: Import and build Web version
+      - name: Import project and export Web build
         shell: bash
+        env:
+          PROJECT_DIR: ${{ steps.game.outputs.project_dir }}
         run: |
           set -euo pipefail
           mkdir -p site
-          godot --headless --editor --import --path work/Toy_Football_Godot_v0_3
-          godot --headless --path work/Toy_Football_Godot_v0_3 --export-release "Web" "$GITHUB_WORKSPACE/site/index.html"
+          godot --headless --editor --import --path "$PROJECT_DIR"
+          godot --headless --path "$PROJECT_DIR" --export-release Web "$GITHUB_WORKSPACE/site/index.html"
           test -s site/index.html
           touch site/.nojekyll
 
-      - name: Upload website files
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
@@ -91,10 +124,8 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Publish to GitHub Pages
+      - name: Deploy GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
-
-
-
-
